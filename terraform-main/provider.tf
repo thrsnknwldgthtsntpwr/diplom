@@ -8,7 +8,7 @@ terraform {
         endpoints = {
             s3 = "https://storage.yandexcloud.net"
         }
-        bucket = "nikiforov-roman-diplom-backend-bucket-123123123"
+        bucket = "terraform-state-b1gracaa21gumqmcihci"
         region = "ru-central1"
         key = "terraform.tfstate"
         skip_region_validation = true
