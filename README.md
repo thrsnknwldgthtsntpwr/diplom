@@ -64,23 +64,111 @@
 ---
 ### Создание Kubernetes кластера
 
-На этом этапе необходимо создать [Kubernetes](https://kubernetes.io/ru/docs/concepts/overview/what-is-kubernetes/) кластер на базе предварительно созданной инфраструктуры.   Требуется обеспечить доступ к ресурсам из Интернета.
+1. Для работы с kubespray понадобится: 
+- склонировать репозиторий https://github.com/kubernetes-sigs/kubespray на свою ВМ
+- установить ansible и pip3
 
-Это можно сделать двумя способами:
+```
+sudo apt install ansible pyhon3-pip -y
+cd ~/diplom && git clone https://github.com/kubernetes-sigs/kubespray
+cd kubespray && pip install -r requirements.txt
 
-1. Рекомендуемый вариант: самостоятельная установка Kubernetes кластера.  
-   а. При помощи Terraform подготовить как минимум 3 виртуальных машины Compute Cloud для создания Kubernetes-кластера. Тип виртуальной машины следует выбрать самостоятельно с учётом требовании к производительности и стоимости. Если в дальнейшем поймете, что необходимо сменить тип инстанса, используйте Terraform для внесения изменений.  
-   б. Подготовить [ansible](https://www.ansible.com/) конфигурации, можно воспользоваться, например [Kubespray](https://kubernetes.io/docs/setup/production-environment/tools/kubespray/)  
-   в. Задеплоить Kubernetes на подготовленные ранее инстансы, в случае нехватки каких-либо ресурсов вы всегда можете создать их при помощи Terraform.
-2. Альтернативный вариант: воспользуйтесь сервисом [Yandex Managed Service for Kubernetes](https://cloud.yandex.ru/services/managed-kubernetes)  
-  а. С помощью terraform resource для [kubernetes](https://registry.terraform.io/providers/yandex-cloud/yandex/latest/docs/resources/kubernetes_cluster) создать **региональный** мастер kubernetes с размещением нод в разных 3 подсетях      
-  б. С помощью terraform resource для [kubernetes node group](https://registry.terraform.io/providers/yandex-cloud/yandex/latest/docs/resources/kubernetes_node_group)
-  
-Ожидаемый результат:
+```
+![2-img-1](img/2-img-1.png)
 
-1. Работоспособный Kubernetes кластер.
-2. В файле `~/.kube/config` находятся данные для доступа к кластеру.
-3. Команда `kubectl get pods --all-namespaces` отрабатывает без ошибок.
+2. Копирую пример конфига кластера в отдельную директорию
+```
+cp cp -rfp inventory/sample inventory/netology-cluster
+```
+3. В каталог terraform-main добавляю файл ansible_inventoy.tf в котором описана автоматическая генерация inventory-файла для kubespray
+```
+locals {
+
+  vm_roles = {
+    "vm-ru-central1-a" = "master"
+    "vm-ru-central1-b" = "worker1"
+    "vm-ru-central1-d" = "worker2"
+  }
+
+  hosts = {
+    for vm_name, instance in yandex_compute_instance.kuber-vm : local.vm_roles[vm_name] => {
+      ansible_host = instance.network_interface.0.nat_ip_address
+      access_ip    = instance.network_interface.0.nat_ip_address
+      ip           = instance.network_interface.0.ip_address
+      ansible_user = "ubuntu"
+    }
+  }
+}
+
+resource "local_file" "ansible_inventory" {
+  content = templatefile("${path.module}/inventory.tmpl", {
+    hosts = local.hosts
+  })
+  filename = "${path.module}/../kubespray/inventory/netology-cluster/inventory.yml"
+}
+```
+4. В файле ~/diplom/kubespray/inventory/netology-cluster/group_vars/k8s_cluster/k8s-cluster.yml ищу параметр kubeconfig_localhost и выставляю его в true для того, чтобы на локальной машине появился конфиг подключения к кластеру. Также снимаю комментарий с этой строки
+
+5. Запускаю terraform apply снова, для того, чтобы сгенерировать inventory-файл
+```
+cd ~/diplom/terraform-main && terraform apply
+```
+```
+all:
+  hosts:
+    master:
+      ansible_host: 158.160.57.73
+      access_ip: 158.160.57.73
+      ip: 192.168.100.14
+      ansible_user: ubuntu
+    worker1:
+      ansible_host: 84.201.164.7
+      access_ip: 84.201.164.7
+      ip: 192.168.110.33
+      ansible_user: ubuntu
+    worker2:
+      ansible_host: 158.160.187.46
+      access_ip: 158.160.187.46
+      ip: 192.168.120.17
+      ansible_user: ubuntu
+  children:
+    kube_control_plane:
+      hosts:
+        master:
+    kube_node:
+      hosts:
+        master:
+        worker1:
+        worker2:
+    etcd:
+      hosts:
+        master:
+    k8s_cluster:
+      children:
+        kube_control_plane:
+        kube_node:
+```
+
+6. Запускаю ansible-playbook
+```
+cd ../kubespray/ && ansible-playbook -i inventory/netology-cluster/inventory.yml cluster.yml -b
+```
+7. Устанавливаю kubectl на локальную ВМ
+```
+sudo snap install kubectl --classic
+```
+8. Копирую содержимое файла ~/diplom/kubespray/inventory/netology-cluster/artifacts/admin.conf в файл ~/.kube/config
+```
+mkdir ~/.kube && cp ~/diplom/kubespray/inventory/netology-cluster/artifacts/admin.conf ~/.kube/config
+```
+9. Проверяю подключение к кластеру
+```
+kubectl get pods --all-namespaces
+```
+![2-img-2](img/2-img-2.png)
+
+### 
+
 
 ---
 ### Создание тестового приложения
