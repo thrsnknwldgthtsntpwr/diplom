@@ -9,8 +9,6 @@
   * [Что необходимо для сдачи задания?](#что-необходимо-для-сдачи-задания)
   * [Как правильно задавать вопросы дипломному руководителю?](#как-правильно-задавать-вопросы-дипломному-руководителю)
 
-**Перед началом работы над дипломным заданием изучите [Инструкция по экономии облачных ресурсов](https://github.com/netology-code/devops-materials/blob/master/cloudwork.MD).**
-
 ---
 ## Цели:
 
@@ -27,39 +25,244 @@
 
 ### Создание облачной инфраструктуры
 
-Для начала необходимо подготовить облачную инфраструктуру в ЯО при помощи [Terraform](https://www.terraform.io/).
+1. Создаю два каталога для двух terraform-конфигураций
+```
+mkdir ~/diplom/terraform-main ~/diplom/terraform-prereq-bucket
+```
+2. Создаю сервисный аккаунт для каталога diplom-netology в Яндекс Облаке и авторизованный ключ для него через веб-интерфейс
 
-Особенности выполнения:
+![1-img-1](img/1-img-1.png)
 
-- Бюджет купона ограничен, что следует иметь в виду при проектировании инфраструктуры и использовании ресурсов;
-Для облачного k8s используйте региональный мастер(неотказоустойчивый). Для self-hosted k8s минимизируйте ресурсы ВМ и долю ЦПУ. В обоих вариантах используйте прерываемые ВМ для worker nodes.
+3. Содержимое ключа помещаю в файл ~/diplom/terraform-prereq-bucket/authorized_keys/diplom-netology-admin_authorized_key.json
+4. Добавляю .gitignore в каталог ~/diplom/terraform-prereq-bucket/authorized_keys/ с содержимым
+```
+*key*
+```
+5. Выполняю terraform init в каталоге ~/diplom/terraform-prereq-bucket
+6. Добавляю стандартный для terraform-проекта .gitignore в каталоги ~/diplom/terraform-prereq-bucket/ и ~/diplom/terraform-main
+7. Создаю provider.tf
+```
+terraform {
+    required_providers {
+        yandex = {
+            source = "yandex-cloud/yandex"
+        }
+    }
+}
 
-Предварительная подготовка к установке и запуску Kubernetes кластера.
+provider "yandex" {
+    zone = var.default_zone
+    service_account_key_file = var.authorized_key_file
+    cloud_id = var.cloud_id
+    folder_id = var.folder_id
+}
+```
+8. Добавляю variables.tf
+```
+variable "cloud_id" {
+    type = string
+    description = "Yandex.Cloud Identifier"
+}
+variable "folder_id" {
+    type = string
+    description = "Folder Identifier"
+}
+variable "default_zone" {
+    type = string
+    description = "Default Zone"
+}
+variable "authorized_key_file" {
+    type = string
+    description = "Path to Storage.editor Service Account's authorized_key file"
+}
+variable "storage_class" {
+    type = string
+    description = "Bucket's storage class (STANDARD/COLD/ICE)"
+}
+```
+9. terraform.tfvars выглядит следующим образом
+```
+cloud_id = "b1gmrdbulmjk5vov6tbl"
+folder_id = "b1gracaa21gumqmcihci"
+default_zone = "ru-central1-a"
+authorized_key_file = "./authorized_keys/diplom-netology-admin_authorized_key.json"
+storage_class = "STANDARD"
+```
+10. main.tf, в котором, собственно создаю бакет и сервисный аккаунт для него
+```
+resource "yandex_storage_bucket" "terraform_state" {
+  bucket     = "terraform-state-${var.folder_id}"
+  default_storage_class = var.storage_class
+  force_destroy = true
+  acl = "private"
+  access_key = yandex_iam_service_account_static_access_key.sa_key.access_key
+  secret_key = yandex_iam_service_account_static_access_key.sa_key.secret_key
+}
 
-1. Создайте сервисный аккаунт, который будет в дальнейшем использоваться Terraform для работы с инфраструктурой с необходимыми и достаточными правами. Не стоит использовать права суперпользователя
-2. Подготовьте [backend](https://developer.hashicorp.com/terraform/language/backend) для Terraform:  
-   а. Рекомендуемый вариант: S3 bucket в созданном ЯО аккаунте(создание бакета через TF)
-   б. Альтернативный вариант:  [Terraform Cloud](https://app.terraform.io/)
-3. Создайте конфигурацию Terrafrom, используя созданный бакет ранее как бекенд для хранения стейт файла. Конфигурации Terraform для создания сервисного аккаунта и бакета и основной инфраструктуры следует сохранить в разных папках.
-4. Создайте VPC с подсетями в разных зонах доступности.
-5. Убедитесь, что теперь вы можете выполнить команды `terraform destroy` и `terraform apply` без дополнительных ручных действий.
-6. В случае использования [Terraform Cloud](https://app.terraform.io/) в качестве [backend](https://developer.hashicorp.com/terraform/language/backend) убедитесь, что применение изменений успешно проходит, используя web-интерфейс Terraform cloud.
+resource "yandex_iam_service_account" "sa" {
+  name = "sa"
+  folder_id = var.folder_id
+}
 
-Ожидаемые результаты:
+resource "yandex_iam_service_account_static_access_key" "sa_key" {
+  service_account_id = yandex_iam_service_account.sa.id
+}
 
-1. Terraform сконфигурирован и создание инфраструктуры посредством Terraform возможно без дополнительных ручных действий, стейт основной конфигурации сохраняется в бакете или Terraform Cloud
-2. Полученная конфигурация инфраструктуры является предварительной, поэтому в ходе дальнейшего выполнения задания возможны изменения.
+resource "yandex_resourcemanager_folder_iam_binding" "storage_editor" {
+  folder_id = var.folder_id
+  role      = "storage.editor"
+  members   = ["serviceAccount:${yandex_iam_service_account.sa.id}"]
+}
 
-* * *
+output "bucket_name" {
+  value = yandex_storage_bucket.terraform_state.bucket
+}
 
-![img-1](img/img-1.png)
-![img-2](img/img-2.png)
-![img-3](img/img-3.png)
-![img-4](img/img-4.png)
-![img-5](img/img-5.png)
-![img-6](img/img-6.png)
+output "access_key" {
+  value = yandex_iam_service_account_static_access_key.sa_key.access_key
+}
 
-* * *
+output "secret_key" {
+  value = yandex_iam_service_account_static_access_key.sa_key.secret_key
+  sensitive = true
+}
+```
+11. Выполняю terraform apply
+![1-img-2](img/1-img-2.png)
+
+12. Выполняю команду terraform output secret_key, чтобы получить содержимое закрытого ключа от сервисного аккаунта с ролью storage.editor
+13. Добавляю полученные ключи в переменные окружения $ACCESS_KEY и $SECRET_KEY
+```
+export ACCESS_KEY=YCAJEX2BtfEqiC4w....
+export SECRET_KEY=YCMbjPJDul3Pyrpj....
+```
+14. Перехожу к каталогу terraform-main. Описываю backend вместе с провайдером в файле provider.tf
+```
+terraform {
+    required_providers {
+        yandex = {
+            source = "yandex-cloud/yandex"
+        }
+    }
+    backend "s3" {
+        endpoints = {
+            s3 = "https://storage.yandexcloud.net"
+        }
+        bucket = "terraform-state-b1gracaa21gumqmcihci"
+        region = "ru-central1"
+        key = "terraform.tfstate"
+        skip_region_validation = true
+        skip_credentials_validation = true
+        skip_requesting_account_id = true
+        skip_s3_checksum = true
+    }
+}
+
+provider "yandex" {
+    zone = var.default_zone
+    service_account_key_file = var.authorized_key_file
+    cloud_id = var.cloud_id
+    folder_id = var.folder_id
+}
+```
+15. Выполняю команду terraform init -backend-config="access_key=$ACCESS_KEY" -backend-config="secret_key=$SECRET_KEY"
+![1-img-3](img/1-img-3.png)
+
+16. Создаю каталог ~/diplom/terraform-main/authorized_keys и помещаю в него авторизованный ключ сервисного аккаунта, публичный ssh-ключ и .gitignore-файл
+```
+mkdir ~/diplom/terraform-main/authorized_keys
+cp -R ~/diplom/terraform-prereq-bucket/authorized_keys/* ~/diplom/terraform-main/authorized_keys/
+cp ~/.ssh/id_ed25519.pub ~/diplom/terraform-main/authorized_keys/
+```
+17. Описываю переменные для создаваемых инстансов в файле vm-variables.tf
+18. Описываю переменные для доступа к Яндекс Облаку в файле variables.tf
+19. terraform.tfvars выглядит так:
+```
+cloud_id = "b1gmrdbulmjk5vov6tbl"
+folder_id = "b1gracaa21gumqmcihci"
+default_zone = "ru-central1-a"
+authorized_key_file = "./authorized_keys/diplom-netology-admin_authorized_key.json"
+platform_id = "standard-v3"
+vm-cores = 2
+vm-ram = 4
+vm-core_fraction = 100
+vm-preemptible = true
+vm-disk-image_id = "fd81evq9jnnqoa0pc7vf"
+vm-disk-size = 20
+vm-disk-type = "network-hdd"
+```
+20. Добавляю файл kubernetes-instances.tf с описанием инстансов и подсетей, которые хочу создать
+```
+locals {
+  subnets = {
+    "subnet-ru-central1-a" = { zone = "ru-central1-a", cidr = "192.168.100.0/24" },
+    "subnet-ru-central1-b" = { zone = "ru-central1-b", cidr = "192.168.110.0/24" },
+    "subnet-ru-central1-d" = { zone = "ru-central1-d", cidr = "192.168.120.0/24" }
+  }
+  vms = {
+    "vm-ru-central1-a" = { zone = "ru-central1-a", subnet_name = "subnet-ru-central1-a" },
+    "vm-ru-central1-b" = { zone = "ru-central1-b", subnet_name = "subnet-ru-central1-b" },
+    "vm-ru-central1-d" = { zone = "ru-central1-d", subnet_name = "subnet-ru-central1-d" }
+  }
+}
+
+resource "yandex_vpc_network" "kuber-network" {
+    name = "kuber-network"
+}
+
+resource "yandex_vpc_subnet" "subnet" {
+  for_each       = local.subnets
+  name           = each.key
+  zone           = each.value.zone
+  network_id     = yandex_vpc_network.kuber-network.id
+  v4_cidr_blocks = [each.value.cidr]
+}
+
+resource "yandex_compute_instance" "kuber-vm" {
+  for_each    = local.vms
+  name        = each.key
+  platform_id = var.platform_id
+  zone        = each.value.zone
+  allow_stopping_for_update = true
+  resources {
+    cores  = var.vm-cores
+    memory = var.vm-ram
+    core_fraction = var.vm-core_fraction
+  }
+  scheduling_policy {
+    preemptible = var.vm-preemptible
+  }
+  boot_disk {
+    initialize_params {
+      image_id = var.vm-disk-image_id
+      type = var.vm-disk-type
+      size = var.vm-disk-size
+    }
+  }
+  network_interface {
+    index = 0
+    subnet_id = yandex_vpc_subnet.subnet[each.value.subnet_name].id
+    nat       = true
+  }
+  metadata = {
+    ssh-keys = "ubuntu:${file("./authorized_keys/id_ed25519.pub")}"
+  }
+}
+
+output "Kubernetes-instances-private-IPs" {
+  value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.ip_address }
+  description = "Private IP addresses of the created instances"
+}
+output "Kubernetes-instances-public-IPs" {
+  value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.nat_ip_address }
+  description = "Public IP addresses of the created instances"
+}
+```
+21. Выполняю terraform apply в каталоге ~/diplom/terraform-main
+![1-img-4](img/1-img-4.png)
+
+22. Выполняю terraform destroy, чтобы убедиться, что всё ок
+![1-img-5](img/1-img-5.png)
 
 ---
 ### Создание Kubernetes кластера
@@ -166,8 +369,6 @@ mkdir ~/.kube && cp ~/diplom/kubespray/inventory/netology-cluster/artifacts/admi
 kubectl get pods --all-namespaces
 ```
 ![2-img-2](img/2-img-2.png)
-
-### 
 
 
 ---
