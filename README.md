@@ -78,7 +78,7 @@ cd kubespray && pip install -r requirements.txt
 
 2. Копирую пример конфига кластера в отдельную директорию
 ```
-cp cp -rfp inventory/sample inventory/netology-cluster
+cp -rfp inventory/sample inventory/netology-cluster
 ```
 3. В каталог terraform-main добавляю файл ansible_inventoy.tf в котором описана автоматическая генерация inventory-файла для kubespray
 ```
