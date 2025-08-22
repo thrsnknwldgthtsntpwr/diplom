@@ -326,7 +326,6 @@ output "Kubernetes-instances-public-IPs" {
 sudo apt install ansible pyhon3-pip -y
 cd ~/diplom && git clone https://github.com/kubernetes-sigs/kubespray
 cd kubespray && pip install -r requirements.txt
-
 ```
 ![2-img-1](img/2-img-1.png)
 
@@ -444,6 +443,49 @@ docker push thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
 
 ---
 ### Подготовка cистемы мониторинга и деплой приложения
+
+Для деплоя prometheus мной был выбран вариант через helm chart
+
+1. Устанавливаю helm
+```
+sudo snap install helm --classic
+```
+2. Создаю namespace monitoring
+```
+kubectl create namespace monitoring
+```
+3. Добавляю репозиторий prometheus в helm
+```
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+4. Создаю файл конфига prometheus - values.yaml
+```
+grafana:
+  service:
+    type: NodePort
+    port: 30000
+prometheus:
+  service:
+    type: ClusterIP
+alertmanager:
+  service:
+    type: ClusterIP
+```
+5. Устанавливаю prometheus через helm командой:
+```
+helm install monitoring prometheus-community/kube-prometheus-stack -f ~/diplom/monitoring/values.yaml --namespace monitoring
+```
+![4-img-1](img/4-img-1.png)
+6. Получаю пароль от УЗ admin в grafana
+```
+kubectl --namespace monitoring get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+```
+7. Проверяю доступность grafana по публичному адресу http://84.201.139.30:30000
+![4-img-2](img/4-img-2.png)
+
+8. Добавляю дашборд для kubernetes через Dashboads -> New -> Import (https://grafana.com/grafana/dashboards/18283-kubernetes-dashboard/)
+![4-img-3](img/4-img-3.png)
 
 Уже должны быть готовы конфигурации для автоматического создания облачной инфраструктуры и поднятия Kubernetes кластера.  
 Теперь необходимо подготовить конфигурационные файлы для настройки нашего Kubernetes кластера.
