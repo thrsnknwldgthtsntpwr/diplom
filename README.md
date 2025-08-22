@@ -374,20 +374,22 @@ kubectl get pods --all-namespaces
 ---
 ### Создание тестового приложения
 
-Для перехода к следующему этапу необходимо подготовить тестовое приложение, эмулирующее основное приложение разрабатываемое вашей компанией.
-
-Способ подготовки:
-
-1. Рекомендуемый вариант:  
-   а. Создайте отдельный git репозиторий с простым nginx конфигом, который будет отдавать статические данные.  
-   б. Подготовьте Dockerfile для создания образа приложения.  
-2. Альтернативный вариант:  
-   а. Используйте любой другой код, главное, чтобы был самостоятельно создан Dockerfile.
-
-Ожидаемый результат:
-
-1. Git репозиторий с тестовым приложением и Dockerfile.
-2. Регистри с собранным docker image. В качестве регистри может быть DockerHub или [Yandex Container Registry](https://cloud.yandex.ru/services/container-registry), созданный также с помощью terraform.
+1. Создал репозиторий на github - https://github.com/thrsnknwldgthtsntpwr/nginx-test-app.git
+2. Dockerfile:
+```
+FROM nginx:alpine
+COPY ./index.html /usr/share/nginx/html
+COPY ./meme.png /usr/share/nginx/html
+EXPOSE 80
+```
+3. Собрал и запушил в dockerhub
+```
+cd ~/nginx-test-app
+docker login -u thrsnknwldgthtsntpwr
+docker build -t thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
+docker push thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
+```
+4. https://hub.docker.com/repository/docker/thrsnknwldgthtsntpwr/nginx-test-app
 
 ---
 ### Подготовка cистемы мониторинга и деплой приложения
