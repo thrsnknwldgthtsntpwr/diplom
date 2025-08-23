@@ -54,6 +54,38 @@ resource "yandex_compute_instance" "kuber-vm" {
   }
 }
 
+resource "yandex_lb_target_group" "ingress_target_group" {
+  name = "ingress-target-group"
+  dynamic "target" {
+    for_each = yandex_compute_instance.kuber-vm
+    content {
+      subnet_id = target.value.network_interface.0.subnet_id
+      address   = target.value.network_interface.0.ip_address
+    }
+  }
+}
+
+resource "yandex_lb_network_load_balancer" "ingress_lb" {
+  name = "ingress-load-balancer"
+  listener {
+    name = "http-listener"
+    port = 80
+    external_address_spec {
+      ip_version = "ipv4"
+    }
+  }
+
+  attached_target_group {
+    target_group_id = yandex_lb_target_group.ingress_target_group.id
+    healthcheck {
+      name = "tcp"
+      tcp_options {
+        port = 80
+      }
+    }
+  }
+}
+
 output "Kubernetes-instances-private-IPs" {
   value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.ip_address }
   description = "Private IP addresses of the created instances"
@@ -61,4 +93,8 @@ output "Kubernetes-instances-private-IPs" {
 output "Kubernetes-instances-public-IPs" {
   value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.nat_ip_address }
   description = "Public IP addresses of the created instances"
+}
+output "load_balancer_external_ip" {
+  value       = yandex_lb_network_load_balancer.ingress_lb.listener[*].external_address_spec[*].address
+  description = "External IP address of the Network Load Balancer"
 }

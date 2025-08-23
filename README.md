@@ -300,6 +300,38 @@ resource "yandex_compute_instance" "kuber-vm" {
   }
 }
 
+resource "yandex_lb_target_group" "ingress_target_group" {
+  name = "ingress-target-group"
+  dynamic "target" {
+    for_each = yandex_compute_instance.kuber-vm
+    content {
+      subnet_id = target.value.network_interface.0.subnet_id
+      address   = target.value.network_interface.0.ip_address
+    }
+  }
+}
+
+resource "yandex_lb_network_load_balancer" "ingress_lb" {
+  name = "ingress-load-balancer"
+  listener {
+    name = "http-listener"
+    port = 80
+    external_address_spec {
+      ip_version = "ipv4"
+    }
+  }
+
+  attached_target_group {
+    target_group_id = yandex_lb_target_group.ingress_target_group.id
+    healthcheck {
+      name = "tcp"
+      tcp_options {
+        port = 80
+      }
+    }
+  }
+}
+
 output "Kubernetes-instances-private-IPs" {
   value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.ip_address }
   description = "Private IP addresses of the created instances"
@@ -307,6 +339,10 @@ output "Kubernetes-instances-private-IPs" {
 output "Kubernetes-instances-public-IPs" {
   value = { for k, v in yandex_compute_instance.kuber-vm : k => v.network_interface.0.nat_ip_address }
   description = "Public IP addresses of the created instances"
+}
+output "load_balancer_external_ip" {
+  value       = yandex_lb_network_load_balancer.ingress_lb.listener[*].external_address_spec[*].address
+  description = "External IP address of the Network Load Balancer"
 }
 ```
 21. Выполняю terraform apply в каталоге ~/diplom/terraform-main
@@ -362,7 +398,15 @@ resource "local_file" "ansible_inventory" {
 ```
 4. В файле ~/diplom/kubespray/inventory/netology-cluster/group_vars/k8s_cluster/k8s-cluster.yml ищу параметр kubeconfig_localhost и выставляю его в true для того, чтобы на локальной машине появился конфиг подключения к кластеру. Также снимаю комментарий с этой строки
 
-5. Запускаю terraform apply снова, для того, чтобы сгенерировать inventory-файл
+5. В файле ~/diplom/kubespray/inventory/netology-cluster/group_vars/k8s_cluster/addons.yml выставляю параметры:
+
+```
+ingress_nginx_enabled: true
+ingress_nginx_service_type: NodePort
+```
+Это понадобится для маршрутизации http-запросов между двумя приложениями - grafana и nginx-test-app
+
+6. Запускаю terraform apply снова, для того, чтобы сгенерировать inventory-файл
 ```
 cd ~/diplom/terraform-main && terraform apply
 ```
@@ -402,19 +446,19 @@ all:
         kube_node:
 ```
 
-6. Запускаю ansible-playbook
+7. Запускаю ansible-playbook
 ```
 cd ../kubespray/ && ansible-playbook -i inventory/netology-cluster/inventory.yml cluster.yml -b
 ```
-7. Устанавливаю kubectl на локальную ВМ
+8. Устанавливаю kubectl на локальную ВМ
 ```
 sudo snap install kubectl --classic
 ```
-8. Копирую содержимое файла ~/diplom/kubespray/inventory/netology-cluster/artifacts/admin.conf в файл ~/.kube/config
+9. Копирую содержимое файла ~/diplom/kubespray/inventory/netology-cluster/artifacts/admin.conf в файл ~/.kube/config
 ```
 mkdir ~/.kube && cp ~/diplom/kubespray/inventory/netology-cluster/artifacts/admin.conf ~/.kube/config
 ```
-9. Проверяю подключение к кластеру
+10. Проверяю подключение к кластеру
 ```
 kubectl get pods --all-namespaces
 ```
@@ -441,18 +485,55 @@ docker push thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
 ```
 4. https://hub.docker.com/repository/docker/thrsnknwldgthtsntpwr/nginx-test-app
 
+5. В настройках репозитория добавил DOCKER_USERNAME и DOCKER_PASSWORD для доступа из github к dockerhub
+6. Добавил workflow в github
+```
+name: Docker Build and Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: thrsnknwldgthtsntpwr/nginx-test-app:latest
+```
+7. Запушил измененную версию страницы - в dockerhub появился latest образ
+![3-img-1](img/3-img-1.png)
+
 ---
 ### Подготовка cистемы мониторинга и деплой приложения
 
 Для деплоя prometheus мной был выбран вариант через helm chart
+0. Создаю namespace netology в котором будут находиться nginx-test-app и monitoring
+```
+kubectl create namespace netology
+```
 
 1. Устанавливаю helm
 ```
 sudo snap install helm --classic
-```
-2. Создаю namespace monitoring
-```
-kubectl create namespace monitoring
 ```
 3. Добавляю репозиторий prometheus в helm
 ```
@@ -463,8 +544,7 @@ helm repo update
 ```
 grafana:
   service:
-    type: NodePort
-    port: 30000
+    type: ClusterIP
 prometheus:
   service:
     type: ClusterIP
@@ -474,18 +554,58 @@ alertmanager:
 ```
 5. Устанавливаю prometheus через helm командой:
 ```
-helm install monitoring prometheus-community/kube-prometheus-stack -f ~/diplom/monitoring/values.yaml --namespace monitoring
+helm install monitoring prometheus-community/kube-prometheus-stack -f ~/diplom/monitoring/values.yaml --namespace netology
 ```
 ![4-img-1](img/4-img-1.png)
 6. Получаю пароль от УЗ admin в grafana
 ```
 kubectl --namespace monitoring get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
 ```
-7. Проверяю доступность grafana по публичному адресу http://84.201.139.30:30000
+7. Применяю конфиг для ingress-nginx
+```
+kubectl apply -f ~/diplom/ingress-nginx/ingress.yaml
+```
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: path-based-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: monitoring-grafana
+            port:
+              number: 80
+      - path: /nginx-test-app
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-test-app
+            port:
+              number: 80
+```
+
+7. Проверяю доступность grafana по публичному адресу балансировщика
 ![4-img-2](img/4-img-2.png)
 
 8. Добавляю дашборд для kubernetes через Dashboads -> New -> Import (https://grafana.com/grafana/dashboards/18283-kubernetes-dashboard/)
 ![4-img-3](img/4-img-3.png)
+
+9. Устанавливаю ingress для маршрутизации запросов на 80-ый порт между grafana и тестовым приложением
+```
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace
+```
+
 
 Уже должны быть готовы конфигурации для автоматического создания облачной инфраструктуры и поднятия Kubernetes кластера.  
 Теперь необходимо подготовить конфигурационные файлы для настройки нашего Kubernetes кластера.
