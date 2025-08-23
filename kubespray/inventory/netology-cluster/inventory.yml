@@ -1,19 +1,19 @@
 all:
   hosts:
     master:
-      ansible_host: 158.160.62.47
-      access_ip: 158.160.62.47
-      ip: 192.168.100.33
+      ansible_host: 84.201.135.15
+      access_ip: 84.201.135.15
+      ip: 192.168.100.8
       ansible_user: ubuntu
     worker1:
-      ansible_host: 89.169.183.135
-      access_ip: 89.169.183.135
-      ip: 192.168.110.17
+      ansible_host: 89.169.191.150
+      access_ip: 89.169.191.150
+      ip: 192.168.110.33
       ansible_user: ubuntu
     worker2:
-      ansible_host: 158.160.157.0
-      access_ip: 158.160.157.0
-      ip: 192.168.120.26
+      ansible_host: 158.160.188.232
+      access_ip: 158.160.188.232
+      ip: 192.168.120.21
       ansible_user: ubuntu
   children:
     kube_control_plane:

@@ -369,7 +369,7 @@ cd kubespray && pip install -r requirements.txt
 ```
 cp -rfp inventory/sample inventory/netology-cluster
 ```
-3. В каталог terraform-main добавляю файл ansible_inventoy.tf в котором описана автоматическая генерация inventory-файла для kubespray
+3. В каталог terraform-main добавляю файл ansible_inventory.tf в котором описана автоматическая генерация inventory-файла для kubespray
 ```
 locals {
 
@@ -486,7 +486,7 @@ docker push thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
 4. https://hub.docker.com/repository/docker/thrsnknwldgthtsntpwr/nginx-test-app
 
 5. В настройках репозитория добавил DOCKER_USERNAME и DOCKER_PASSWORD для доступа из github к dockerhub
-6. Добавил workflow в github
+6. Добавил workflow в github (.github/workflows/docker-publish.yml)
 ```
 name: Docker Build and Push
 
@@ -526,12 +526,12 @@ jobs:
 ### Подготовка cистемы мониторинга и деплой приложения
 
 Для деплоя prometheus мной был выбран вариант через helm chart
-0. Создаю namespace netology в котором будут находиться nginx-test-app и monitoring
+
+1. Создаю namespace netology в котором будут находиться nginx-test-app и monitoring
 ```
 kubectl create namespace netology
 ```
-
-1. Устанавливаю helm
+2. Устанавливаю helm
 ```
 sudo snap install helm --classic
 ```
@@ -540,28 +540,13 @@ sudo snap install helm --classic
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 ```
-4. Создаю файл конфига prometheus - values.yaml
+4. Устанавливаю prometheus через helm командой:
 ```
-grafana:
-  service:
-    type: ClusterIP
-prometheus:
-  service:
-    type: ClusterIP
-alertmanager:
-  service:
-    type: ClusterIP
-```
-5. Устанавливаю prometheus через helm командой:
-```
-helm install monitoring prometheus-community/kube-prometheus-stack -f ~/diplom/monitoring/values.yaml --namespace netology
+helm install monitoring prometheus-community/kube-prometheus-stack --namespace netology
 ```
 ![4-img-1](img/4-img-1.png)
-6. Получаю пароль от УЗ admin в grafana
-```
-kubectl --namespace monitoring get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
-```
-7. Применяю конфиг для ingress-nginx
+
+5. Применяю конфиг для ingress
 ```
 kubectl apply -f ~/diplom/ingress-nginx/ingress.yaml
 ```
@@ -569,53 +554,47 @@ kubectl apply -f ~/diplom/ingress-nginx/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: path-based-ingress
-  namespace: default
+  name: netology-ingress
+  namespace: netology
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
-  ingressClassName: nginx
   rules:
   - http:
       paths:
-      - path: /grafana
+      - path: /
         pathType: Prefix
         backend:
           service:
             name: monitoring-grafana
             port:
-              number: 80
+              number: 80      
       - path: /nginx-test-app
         pathType: Prefix
         backend:
           service:
-            name: nginx-test-app
+            name: nginx-test-app-service
             port:
               number: 80
 ```
-
-7. Проверяю доступность grafana по публичному адресу балансировщика
 ![4-img-2](img/4-img-2.png)
-
-8. Добавляю дашборд для kubernetes через Dashboads -> New -> Import (https://grafana.com/grafana/dashboards/18283-kubernetes-dashboard/)
+6. Разворачиваю deployment и service тестового приложения
+```
+kubectl apply -f ~/diplom/nginx-test-app/nginx-test-app-deployment.yaml
+kubectl apply -f ~/diplom/nginx-test-app/nginx-test-app-service.yaml
+```
+7. Проверяю доступность grafana и nginx-test-app по адресу балансировщика
 ![4-img-3](img/4-img-3.png)
 
-9. Устанавливаю ingress для маршрутизации запросов на 80-ый порт между grafana и тестовым приложением
+8. Получаю пароль от УЗ admin в grafana
 ```
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace
+kubectl --namespace netology get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
 ```
+9. Захожу на веб-интерфейс grafana для добавления дашбордов с метриками kubernetes. Я выбрал этот дашборд - https://grafana.com/grafana/dashboards/18283-kubernetes-dashboard/
 
+Добавляю через Dashboards -> New -> Import 
 
-Уже должны быть готовы конфигурации для автоматического создания облачной инфраструктуры и поднятия Kubernetes кластера.  
-Теперь необходимо подготовить конфигурационные файлы для настройки нашего Kubernetes кластера.
-
-Цель:
-1. Задеплоить в кластер [prometheus](https://prometheus.io/), [grafana](https://grafana.com/), [alertmanager](https://github.com/prometheus/alertmanager), [экспортер](https://github.com/prometheus/node_exporter) основных метрик Kubernetes.
-2. Задеплоить тестовое приложение, например, [nginx](https://www.nginx.com/) сервер отдающий статическую страницу.
-
-Способ выполнения:
-1. Воспользоваться пакетом [kube-prometheus](https://github.com/prometheus-operator/kube-prometheus), который уже включает в себя [Kubernetes оператор](https://operatorhub.io/) для [grafana](https://grafana.com/), [prometheus](https://prometheus.io/), [alertmanager](https://github.com/prometheus/alertmanager) и [node_exporter](https://github.com/prometheus/node_exporter). Альтернативный вариант - использовать набор helm чартов от [bitnami](https://github.com/bitnami/charts/tree/main/bitnami).
+![4-img-4](img/4-img-4.png)
 
 ### Деплой инфраструктуры в terraform pipeline
 

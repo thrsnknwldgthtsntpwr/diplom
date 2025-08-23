@@ -17,6 +17,6 @@ spec:
     spec:
       containers:
       - name: nginx-test-app
-        image: thrsnknwldgthtsntpwr/nginx-test-app:1.0.0
+        image: thrsnknwldgthtsntpwr/nginx-test-app:latest
         ports:
         - containerPort: 80
