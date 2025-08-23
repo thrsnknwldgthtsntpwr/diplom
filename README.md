@@ -610,6 +610,90 @@ kubectl --namespace netology get secrets monitoring-grafana -o jsonpath="{.data.
 ---
 ### Установка и настройка CI/CD
 
+1. Добавляю файл ci-cd.yaml в репозиторий с тестовым приложением в каталог .github/workflows
+```
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/nginx-test-app:latest
+            ${{ secrets.DOCKER_USERNAME }}/nginx-test-app:${{ github.ref_name }}
+
+  deploy-to-kubernetes:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure Kubernetes Context
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+
+      - name: Deploy to Kubernetes
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl --kubeconfig=kubeconfig apply -f k8s/deployment.yaml -n netology
+          kubectl --kubeconfig=kubeconfig apply -f k8s/service.yaml -n netology
+          kubectl --kubeconfig=kubeconfig rollout status deployment/nginx-test-app -n netology
+```
+
+2. Кодирую конфиг подлкючения к кластеру в base64
+```
+cat ~/.kube/config | base64
+```
+3. Добавляю в настройки репозитория на github secrets
+
+KUBE_CONFIG_DATA. Содержимое secret - вывод предыдущей команды
+
+4. Проверяю сборку контейнера
+```
+cd ~/nginx-test-app
+git add .
+git commit -m 'task 5'
+git push
+git tag v.2.0.1
+git push origin tag v.2.0.1
+```
+
+5. Вижу, что в dockerhub появились контейнеры с тэгом v.2.0.1 и latest
+
+![5-img-1](img/5-img-1.png)
+
 Осталось настроить ci/cd систему для автоматической сборки docker image и деплоя приложения при изменении кода.
 
 Цель:
