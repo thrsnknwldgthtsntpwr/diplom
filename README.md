@@ -696,23 +696,42 @@ git push origin tag v.2.0.1
 
 ![5-img-2](img/5-img-2.png)
 
+6. Сама страница 
 
+![5-img-3](img/5-img-3.png)
 
+6. Меняю текст страницы index.html на
+```
+<head>
+    <title>nginx-test-app-index-page-v.3.0.0</title>
+</head>
+<body>
+    <h1>Roman Nikiforov, FOPS-25, v 3.0.0</h1>
+</body>
+```
 
-Осталось настроить ci/cd систему для автоматической сборки docker image и деплоя приложения при изменении кода.
+7. Выполняю
 
-Цель:
+```
+git add .
+git commit -m '3.0.0'
+git push
+git tag v.3.0.0
+git push origin v.3.0.0
+```
 
-1. Автоматическая сборка docker образа при коммите в репозиторий с тестовым приложением.
-2. Автоматический деплой нового docker образа.
+8. Дожидаюсь завершения CI/CD pipeline в github
 
-Можно использовать [teamcity](https://www.jetbrains.com/ru-ru/teamcity/), [jenkins](https://www.jenkins.io/), [GitLab CI](https://about.gitlab.com/stages-devops-lifecycle/continuous-integration/) или GitHub Actions.
+![5-img-4](img/5-img-4.png)
 
-Ожидаемый результат:
+9. Обновляю страницу
 
-1. Интерфейс ci/cd сервиса доступен по http.
-2. При любом коммите в репозиторие с тестовым приложением происходит сборка и отправка в регистр Docker образа.
-3. При создании тега (например, v1.0.0) происходит сборка и отправка с соответствующим label в регистри, а также деплой соответствующего Docker образа в кластер Kubernetes.
+![5-img-5](img/5-img-5.png)
+
+10. Проверяю dockerhub
+
+![5-img-6](img/5-img-6.png)
+
 
 ---
 ## Что необходимо для сдачи задания?
