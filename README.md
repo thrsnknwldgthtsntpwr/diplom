@@ -473,7 +473,6 @@ kubectl get pods --all-namespaces
 ```
 FROM nginx:alpine
 COPY ./index.html /usr/share/nginx/html
-COPY ./meme.png /usr/share/nginx/html
 EXPOSE 80
 ```
 3. Собрал и запушил в dockerhub
@@ -578,6 +577,7 @@ spec:
               number: 80
 ```
 ![4-img-2](img/4-img-2.png)
+
 6. Разворачиваю deployment и service тестового приложения
 ```
 kubectl apply -f ~/diplom/nginx-test-app/nginx-test-app-deployment.yaml
