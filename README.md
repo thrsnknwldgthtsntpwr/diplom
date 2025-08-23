@@ -584,6 +584,7 @@ kubectl apply -f ~/diplom/nginx-test-app/nginx-test-app-deployment.yaml
 kubectl apply -f ~/diplom/nginx-test-app/nginx-test-app-service.yaml
 ```
 7. Проверяю доступность grafana и nginx-test-app по адресу балансировщика
+
 ![4-img-3](img/4-img-3.png)
 
 8. Получаю пароль от УЗ admin в grafana
