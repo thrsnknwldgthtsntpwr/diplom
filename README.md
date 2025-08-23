@@ -680,6 +680,8 @@ cat ~/.kube/config | base64
 
 KUBE_CONFIG_DATA. Содержимое secret - вывод предыдущей команды
 
+![5-img-1](img/5-img-1.png)
+
 4. Проверяю сборку контейнера
 ```
 cd ~/nginx-test-app
@@ -692,7 +694,10 @@ git push origin tag v.2.0.1
 
 5. Вижу, что в dockerhub появились контейнеры с тэгом v.2.0.1 и latest
 
-![5-img-1](img/5-img-1.png)
+![5-img-2](img/5-img-2.png)
+
+
+
 
 Осталось настроить ci/cd систему для автоматической сборки docker image и деплоя приложения при изменении кода.
 
